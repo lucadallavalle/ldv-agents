@@ -1,0 +1,33 @@
+# LDV Agents Configuration
+
+# LangChain Docs Search (HTTP-based, no setup needed!)
+[mcp.servers.langchain-docs]
+transport = "http"
+url = "https://docs.langchain.com/mcp"
+
+# More examples below (uncomment to use):
+
+# Filesystem access (requires Node.js)
+# [mcp.servers.filesystem]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
+
+# GitHub integration (requires Node.js + token)
+# [mcp.servers.github]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-github"]
+# env = { GITHUB_PERSONAL_ACCESS_TOKEN = "your_token_here" }
+
+# PostgreSQL database (requires Node.js)
+# [mcp.servers.postgres]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+# Custom HTTP server
+# [mcp.servers.custom]
+# transport = "http"
+# url = "http://localhost:8000/mcp"
+# headers = { Authorization = "Bearer your_token" }
