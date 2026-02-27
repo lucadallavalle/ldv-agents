@@ -1,7 +1,6 @@
 """Main CLI entry point for ldv-agents."""
 
 import sys
-import subprocess
 import typer
 
 from ldv_agents.commands import deepagents, init_mcp
@@ -62,8 +61,16 @@ def main(
         from ldv_agents import __version__
         typer.echo(f"ldv-agents v{__version__} (with MCP support)")
         try:
-            subprocess.run(["deepagents", "--version"], check=False)
-        except FileNotFoundError:
+            from deepagents_cli.main import cli_main
+            original_argv = sys.argv
+            try:
+                sys.argv = ["deepagents", "--version"]
+                cli_main()
+            except SystemExit:
+                pass
+            finally:
+                sys.argv = original_argv
+        except ImportError:
             typer.echo("Error: deepagents-cli not found. Is it installed?", err=True)
         raise typer.Exit(0)
     

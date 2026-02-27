@@ -2,17 +2,9 @@
 
 import argparse
 import asyncio
-import subprocess
 from pathlib import Path
 
-from deepagents_cli.agent import create_cli_agent
-from deepagents_cli.app import run_textual_app
-from deepagents_cli.config import settings, create_model
-from deepagents_cli.sessions import get_checkpointer
-from deepagents_cli.tools import fetch_url, http_request, web_search
 from rich.console import Console
-
-from ldv_agents.mcp_config import load_mcp_config
 
 console = Console()
 
@@ -22,6 +14,49 @@ def run_deepagents_with_mcp(args: list[str]) -> int:
     
     Extracts --mcp-config if present, loads MCP tools, and runs deepagents with all args.
     """
+    # Subcommands that should bypass MCP mode and go directly to deepagents-cli
+    DEEPAGENTS_SUBCOMMANDS = ['list', 'reset', 'threads', 'skills', 'help']
+    
+    # Check if first arg is a subcommand
+    if args and args[0] in DEEPAGENTS_SUBCOMMANDS:
+        # Forward directly to deepagents-cli for subcommands
+        try:
+            from deepagents_cli.main import cli_main
+            import sys
+            
+            original_argv = sys.argv
+            try:
+                sys.argv = ["deepagents"] + args
+                cli_main()
+                return 0
+            except SystemExit as e:
+                return e.code if e.code is not None else 0
+            finally:
+                sys.argv = original_argv
+        except ImportError as e:
+            console.print(f"[red]Error: deepagents-cli not found. {e}[/red]")
+            return 1
+    
+    # Quick check: if non-interactive mode (-n or --non-interactive), skip MCP
+    # MCP only makes sense for interactive sessions
+    if '-n' in args or '--non-interactive' in args:
+        try:
+            from deepagents_cli.main import cli_main
+            import sys
+            
+            original_argv = sys.argv
+            try:
+                sys.argv = ["deepagents"] + args
+                cli_main()
+                return 0
+            except SystemExit as e:
+                return e.code if e.code is not None else 0
+            finally:
+                sys.argv = original_argv
+        except ImportError as e:
+            console.print(f"[red]Error: deepagents-cli not found. {e}[/red]")
+            return 1
+    
     # Parse only the --mcp-config argument, leave everything else
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--mcp-config", type=Path, default=None)
@@ -29,22 +64,48 @@ def run_deepagents_with_mcp(args: list[str]) -> int:
     # Parse known args, keep unknown for deepagents-cli
     known_args, unknown_args = parser.parse_known_args(args)
     
+    # Auto-detect .ldv-agents.toml if not specified
+    mcp_config = known_args.mcp_config
+    if mcp_config is None:
+        default_config = Path.cwd() / ".ldv-agents.toml"
+        if default_config.exists():
+            mcp_config = default_config
+    
     # If there's an mcp-config, load it and run with MCP tools
-    if known_args.mcp_config:
+    if mcp_config:
         # Run the async chat with MCP
-        return asyncio.run(run_with_mcp(unknown_args, known_args.mcp_config))
+        return asyncio.run(run_with_mcp(unknown_args, mcp_config))
     else:
-        # Just forward to deepagents-cli as-is
+        # Forward to deepagents-cli directly using the local installation
         try:
-            result = subprocess.run(["deepagents"] + args, check=False)
-            return result.returncode
-        except FileNotFoundError:
-            console.print("[red]Error: deepagents-cli not found. Is it installed?[/red]")
+            from deepagents_cli.main import cli_main
+            import sys
+            
+            # Set sys.argv to what deepagents-cli expects
+            original_argv = sys.argv
+            try:
+                sys.argv = ["deepagents"] + args
+                cli_main()
+                return 0
+            except SystemExit as e:
+                return e.code if e.code is not None else 0
+            finally:
+                sys.argv = original_argv
+        except ImportError as e:
+            console.print(f"[red]Error: deepagents-cli not found. Is it installed in .venv? {e}[/red]")
             return 1
 
 
 async def run_with_mcp(args: list[str], mcp_config_path: Path) -> int:
     """Run deepagents with MCP tools loaded."""
+    from deepagents_cli.agent import create_cli_agent
+    from deepagents_cli.app import run_textual_app
+    from deepagents_cli.config import settings, create_model
+    from deepagents_cli.sessions import get_checkpointer
+    from deepagents_cli.tools import fetch_url, http_request, web_search
+    
+    from ldv_agents.mcp_config import load_mcp_config
+    
     # Parse deepagents arguments to extract what we need
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("-a", "--agent", default="default")
@@ -87,19 +148,33 @@ async def run_with_mcp(args: list[str], mcp_config_path: Path) -> int:
         from deepagents_cli.config import parse_shell_allow_list
         settings.shell_allow_list = parse_shell_allow_list(parsed_args.shell_allow_list)
     
+    # Import session utilities
+    from deepagents_cli.sessions import get_most_recent, get_thread_agent, thread_exists
+    
     # Handle --resume flag
     thread_id = parsed_args.thread
     if parsed_args.resume is not None:
-        checkpointer = get_checkpointer(parsed_args.agent)
         if parsed_args.resume == "":  # -r without ID = most recent
-            configs = list(checkpointer.list(None, limit=1))
-            if configs:
-                thread_id = configs[0]["configurable"]["thread_id"]
+            thread_id = await get_most_recent(parsed_args.agent if parsed_args.agent != "default" else None)
+            if thread_id:
                 console.print(f"[dim]Resuming most recent thread: {thread_id}[/dim]")
+                # Update agent name if thread has one
+                agent_name = await get_thread_agent(thread_id)
+                if agent_name:
+                    parsed_args.agent = agent_name
             else:
                 console.print("[yellow]No threads found, starting new conversation[/yellow]")
         else:  # -r ID = specific thread
-            thread_id = parsed_args.resume
+            if await thread_exists(parsed_args.resume):
+                thread_id = parsed_args.resume
+                # Update agent name if thread has one
+                if parsed_args.agent == "default":
+                    agent_name = await get_thread_agent(thread_id)
+                    if agent_name:
+                        parsed_args.agent = agent_name
+            else:
+                console.print(f"[red]Thread '{parsed_args.resume}' not found[/red]")
+                return 1
     
     # Run the deepagents textual app with MCP tools
     try:
@@ -134,37 +209,91 @@ async def run_deepagents_textual(
     mcp_tools: list,
 ):
     """Run the deepagents textual app with MCP tools."""
+    import os
+    from deepagents_cli.agent import create_cli_agent
+    from deepagents_cli.app import run_textual_app
+    from deepagents_cli.config import create_model, settings
+    from deepagents_cli.model_config import ModelConfigError
+    from deepagents_cli.sessions import get_checkpointer
+    from deepagents_cli.tools import fetch_url, http_request, web_search
+    
+    # Change to working directory if specified
+    if working_dir != Path.cwd():
+        os.chdir(working_dir)
+    
     # Create model
-    model = create_model(model_name)
+    try:
+        result = create_model(model_name, extra_kwargs=None)
+    except ModelConfigError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        return 1
     
-    # Create sandbox backend if needed
-    sandbox_backend = None
-    if sandbox_type != "none":
-        from deepagents_cli.sandboxes import create_sandbox
-        sandbox_backend = await create_sandbox(
-            sandbox_type=sandbox_type,
-            sandbox_id=sandbox_id,
-            setup_script=sandbox_setup,
-        )
+    model = result.model
+    result.apply_to_settings()
     
-    # Combine tools: web tools + MCP tools
-    tools = [web_search, fetch_url, http_request] + mcp_tools
-    
-    # Create agent
-    agent, backend = create_cli_agent(
-        name=agent_name,
-        working_directory=working_dir,
-        model=model,
-        tools=tools,
-        auto_approve_tools=auto_approve,
-        sandbox_backend=sandbox_backend,
-    )
-    
-    # Run Textual app
-    await run_textual_app(
-        agent=agent,
-        backend=backend,
-        agent_name=agent_name,
-        thread_id=thread_id,
-        initial_message=initial_message,
-    )
+    # Use async context manager for checkpointer
+    async with get_checkpointer() as checkpointer:
+        # Combine tools: web tools + MCP tools
+        tools = [http_request, fetch_url]
+        if settings.has_tavily:
+            tools.append(web_search)
+        tools.extend(mcp_tools)
+        
+        # Create sandbox backend if needed
+        sandbox_backend = None
+        sandbox_cm = None
+        if sandbox_type != "none":
+            from deepagents_cli.integrations.sandbox_factory import create_sandbox
+            
+            try:
+                sandbox_cm = create_sandbox(
+                    sandbox_type,
+                    sandbox_id=sandbox_id,
+                    setup_script_path=sandbox_setup,
+                )
+                sandbox_backend = sandbox_cm.__enter__()
+            except (ImportError, ValueError, RuntimeError, NotImplementedError) as e:
+                console.print()
+                console.print("[red]Sandbox creation failed[/red]")
+                console.print(f"[dim]{e}[/dim]")
+                return 1
+        
+        try:
+            # Create agent
+            agent, backend = create_cli_agent(
+                model=model,
+                assistant_id=agent_name,
+                tools=tools,
+                sandbox=sandbox_backend,
+                sandbox_type=sandbox_type if sandbox_type != "none" else None,
+                auto_approve=auto_approve,
+                checkpointer=checkpointer,
+            )
+        except Exception as e:
+            console.print(f"[red]Failed to create agent: {e}[/red]")
+            return 1
+        
+        try:
+            # Run Textual app
+            await run_textual_app(
+                agent=agent,
+                assistant_id=agent_name,
+                backend=backend,
+                auto_approve=auto_approve,
+                cwd=working_dir,
+                thread_id=thread_id,
+                initial_prompt=initial_message,
+                checkpointer=checkpointer,
+                tools=tools,
+                sandbox=sandbox_backend,
+                sandbox_type=sandbox_type if sandbox_type != "none" else None,
+            )
+        finally:
+            # Clean up sandbox
+            if sandbox_cm is not None:
+                try:
+                    sandbox_cm.__exit__(None, None, None)
+                except Exception:
+                    pass
+        
+        return 0
