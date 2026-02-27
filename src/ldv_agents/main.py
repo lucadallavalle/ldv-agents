@@ -1,7 +1,7 @@
 import typer
 
 # Import subcommands
-from ldv_agents.commands import chat, init_mcp
+from ldv_agents.commands import chat, init_mcp, skills
 
 app = typer.Typer(
     name="ldv-agents",
@@ -12,6 +12,9 @@ app = typer.Typer(
 # Register subcommands
 app.command(name="chat")(chat.chat)
 app.command(name="init-mcp")(init_mcp.init_mcp)
+
+# Register skills subcommands
+app.add_typer(skills.app, name="skills", help="Manage skills")
 
 
 @app.callback()
