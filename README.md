@@ -1,28 +1,88 @@
 # LDV Agents
 
-REPL-style wrapper around `deepagents` SDK with rich UI, built-in MCP support, long-term memory, and skills.
+**Unified CLI for agent frameworks with Model Context Protocol (MCP) support**
+
+One CLI for all your agent tools with consistent MCP integration:
+
+```bash
+ldv-agents deepagents [OPTIONS]    # deepagents-cli + MCP ✅
+ldv-agents openhands [OPTIONS]     # (coming soon) OpenHands + MCP
+ldv-agents aider [OPTIONS]         # (future) Aider + MCP
+```
+
+Built on proven frameworks, enhanced with MCP integration for connecting external tools and data sources.
 
 ## Quick Start
 
 ```bash
 uv sync
 export ANTHROPIC_API_KEY="sk-..."
-ldv-agents init-mcp  # Optional: enables LangChain docs search
-ldv-agents chat
+ldv-agents init-mcp  # Optional: generate MCP config
+ldv-agents deepagents --mcp-config .ldv-agents.toml
 ```
 
 ## Usage
 
 ```bash
-ldv-agents chat [OPTIONS]
+# Start interactive chat (with MCP support!)
+ldv-agents deepagents [OPTIONS]
+ldv-agents deepagents --mcp-config .ldv-agents.toml
 
-Options:
-  -a, --agent TEXT        Agent name (separate memory/skills per agent, default: default)
-  -d, --dir PATH          Working directory (default: current)
-  -m, --model TEXT        Model (default: anthropic:claude-sonnet-4-5)
-  -t, --thread TEXT       Thread ID for conversation history (default: default)
-  -y, --auto-approve      Auto-approve tools (disables human-in-the-loop)
-  -r, --recursion-limit   Maximum steps (default: 1000)
+# List all agents
+ldv-agents deepagents list
+
+# Manage threads
+ldv-agents deepagents threads list
+ldv-agents deepagents threads delete <ID>
+
+# Reset agent prompt
+ldv-agents deepagents reset --agent <NAME>
+
+# Manage default model
+ldv-agents deepagents --default-model [MODEL]
+
+# Manage skills
+ldv-agents deepagents skills list
+ldv-agents deepagents skills create <NAME>
+ldv-agents deepagents skills info <NAME>
+ldv-agents deepagents skills delete <NAME>
+
+# MCP Configuration
+ldv-agents init-mcp  # Generate example config
+```
+
+### Chat Options
+```
+-a, --agent TEXT          Agent name (default: default)
+-d, --dir PATH            Working directory (default: current)
+-M, --model TEXT          Model (default: anthropic:claude-sonnet-4-5)
+-t, --thread TEXT         Thread ID to resume
+-r, --resume [ID]         Resume thread: -r for most recent, -r ID for specific
+-m, --message TEXT        Initial prompt to auto-submit on start
+--auto-approve            Auto-approve tools (disables HITL)
+--sandbox TYPE            Remote sandbox (none, modal, runloop, daytona, langsmith)
+--sandbox-id ID           Reuse existing sandbox
+--sandbox-setup PATH      Setup script for sandbox
+--shell-allow-list CMDS   Comma-separated local shell commands to allow
+--mcp-config PATH         Path to MCP config file
+```
+
+**Examples:**
+```bash
+# Start new chat with MCP tools
+ldv-agents chat
+
+# Resume most recent thread
+ldv-agents chat -r
+
+# Resume specific thread
+ldv-agents chat -r abc123
+
+# Start with initial message
+ldv-agents chat -m "Analyze the codebase"
+
+# Combine: resume + initial message
+ldv-agents chat -r -m "Continue where we left off"
 ```
 
 **Directory Structure:**
@@ -40,10 +100,16 @@ Options:
 
 ## Features
 
+### What Makes This Different
+
+**🔌 MCP Integration** - The key differentiator from deepagents-cli. Connect to any [Model Context Protocol](https://modelcontextprotocol.io) server and add external tools to your agent.
+
+### All deepagents-cli Features
+
+- **Textual TUI** - Full terminal UI with streaming, message widgets, status bars
 - **File Operations**: `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`
-- **Shell Execution**: `execute` command
+- **Shell Execution**: `execute` command  
 - **Planning**: `write_todos`, `task` (subagents)
-- **MCP Integration**: Connect to any [Model Context Protocol](https://modelcontextprotocol.io) server
 - **Long-term Memory**: `/memories/*` persists across threads
 - **Skills System**: Reusable agent capabilities with progressive disclosure
 - **Human-in-the-Loop**: Approval workflow for sensitive operations

@@ -13,6 +13,7 @@
 
 ### Added - Enhanced UI 🎨
 
+- **Token-by-Token Streaming**: Real-time display of LLM output as it generates (matches deepagents-cli behavior)
 - **Welcome Banner**: Styled panel showing directory, model, thread, and MCP tool count
 - **Rich Tool Panels**: Tool calls displayed in bordered panels with:
   - JSON syntax highlighting for arguments (monokai theme)
