@@ -51,7 +51,24 @@ ldv-agents deepagents skills delete <NAME>
 ldv-agents init-mcp  # Generate example config
 ```
 
-### Chat Options
+## ⚡ Quick Alias (Recommended)
+
+Add to your `~/.bashrc`:
+
+```bash
+alias agd='ldv-agents deepagents'
+```
+
+Then use:
+```bash
+agd list
+agd threads list
+agd --mcp-config .ldv-agents.toml
+```
+
+See [docs/shortcuts.md](docs/shortcuts.md) for more aliases and shortcuts.
+
+### Options
 ```
 -a, --agent TEXT          Agent name (default: default)
 -d, --dir PATH            Working directory (default: current)
@@ -70,19 +87,24 @@ ldv-agents init-mcp  # Generate example config
 **Examples:**
 ```bash
 # Start new chat with MCP tools
-ldv-agents chat
+ldv-agents deepagents --mcp-config .ldv-agents.toml
 
 # Resume most recent thread
-ldv-agents chat -r
+ldv-agents deepagents -r
 
 # Resume specific thread
-ldv-agents chat -r abc123
+ldv-agents deepagents -r abc123
 
 # Start with initial message
-ldv-agents chat -m "Analyze the codebase"
+ldv-agents deepagents -m "Analyze the codebase"
 
-# Combine: resume + initial message
-ldv-agents chat -r -m "Continue where we left off"
+# Combine: resume + initial message + MCP
+ldv-agents deepagents -r -m "Continue" --mcp-config .ldv-agents.toml
+
+# Or with alias:
+agd --mcp-config .ldv-agents.toml
+agd -r
+agd -m "Analyze the codebase"
 ```
 
 **Directory Structure:**
